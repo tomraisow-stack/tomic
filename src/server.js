@@ -6,6 +6,7 @@ const { requireUser, requireAdmin } = require('./auth');
 const categoriesQ = require('./queries/categories');
 const itemsQ = require('./queries/items');
 const ordersQ = require('./queries/orders');
+const adminActions = require('./adminActions');
 
 function asyncHandler(fn) {
   return (req, res, next) => {
@@ -84,6 +85,70 @@ function createServer({ pool, config, bot }) {
     const fileId = await bot.sendProofPhoto(orderId, req.file.buffer);
     const proof = await ordersQ.addPaymentProof(pool, orderId, fileId);
     res.json(proof);
+  }));
+
+  app.get('/api/admin/orders', adminGate, asyncHandler(async (req, res) => {
+    res.json(await ordersQ.listOrdersAdmin(pool, { status: req.query.status }));
+  }));
+
+  app.get('/api/admin/orders/:id', adminGate, asyncHandler(async (req, res) => {
+    const order = await ordersQ.getOrder(pool, Number(req.params.id));
+    if (!order) return res.status(404).json({ error: 'not_found' });
+    res.json(order);
+  }));
+
+  app.post('/api/admin/orders/:id/confirm', adminGate, asyncHandler(async (req, res) => {
+    const result = await adminActions.confirmOrderPayment(pool, Number(req.params.id));
+    if (result.error) return res.status(400).json(result);
+    res.json(result.order);
+  }));
+
+  app.post('/api/admin/orders/:id/cancel', adminGate, asyncHandler(async (req, res) => {
+    const result = await adminActions.cancelOrder(pool, Number(req.params.id));
+    if (result.error) return res.status(400).json(result);
+    res.json(result.order);
+  }));
+
+  app.post('/api/admin/orders/:id/done', adminGate, asyncHandler(async (req, res) => {
+    const result = await adminActions.markOrderDone(pool, Number(req.params.id));
+    if (result.error) return res.status(400).json(result);
+    res.json(result.order);
+  }));
+
+  app.delete('/api/admin/orders/:id', adminGate, asyncHandler(async (req, res) => {
+    res.json({ ok: await ordersQ.deleteOrder(pool, Number(req.params.id)) });
+  }));
+
+  app.get('/api/admin/items', adminGate, asyncHandler(async (req, res) => {
+    res.json(await itemsQ.listItemsAdmin(pool, {}));
+  }));
+
+  app.post('/api/admin/items', adminGate, asyncHandler(async (req, res) => {
+    res.json(await itemsQ.createItem(pool, req.body));
+  }));
+
+  app.put('/api/admin/items/:id', adminGate, asyncHandler(async (req, res) => {
+    const item = await itemsQ.updateItem(pool, Number(req.params.id), req.body);
+    if (!item) return res.status(404).json({ error: 'not_found' });
+    res.json(item);
+  }));
+
+  app.delete('/api/admin/items/:id', adminGate, asyncHandler(async (req, res) => {
+    res.json({ ok: await itemsQ.deleteItem(pool, Number(req.params.id)) });
+  }));
+
+  app.post('/api/admin/categories', adminGate, asyncHandler(async (req, res) => {
+    res.json(await categoriesQ.createCategory(pool, req.body));
+  }));
+
+  app.put('/api/admin/categories/:id', adminGate, asyncHandler(async (req, res) => {
+    const category = await categoriesQ.updateCategory(pool, Number(req.params.id), req.body);
+    if (!category) return res.status(404).json({ error: 'not_found' });
+    res.json(category);
+  }));
+
+  app.delete('/api/admin/categories/:id', adminGate, asyncHandler(async (req, res) => {
+    res.json({ ok: await categoriesQ.deleteCategory(pool, Number(req.params.id)) });
   }));
 
   app.use(express.static(path.join(__dirname, '..', 'webapp')));
