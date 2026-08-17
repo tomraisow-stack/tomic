@@ -1,6 +1,7 @@
 // src/server.js
 const express = require('express');
 const path = require('path');
+const multer = require('multer');
 const { requireUser, requireAdmin } = require('./auth');
 const categoriesQ = require('./queries/categories');
 const itemsQ = require('./queries/items');
@@ -15,6 +16,7 @@ function asyncHandler(fn) {
 function createServer({ pool, config, bot }) {
   const app = express();
   app.use(express.json());
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
   const userGate = requireUser({ botToken: config.botToken, maxAgeSeconds: config.userInitDataMaxAgeSeconds });
   const adminGate = requireAdmin({ botToken: config.botToken, adminIds: config.adminIds, maxAgeSeconds: config.adminInitDataMaxAgeSeconds });
@@ -56,6 +58,32 @@ function createServer({ pool, config, bot }) {
 
   app.get('/api/cart', userGate, asyncHandler(async (req, res) => {
     res.json(await ordersQ.getUserCartReservations(pool, req.telegramUser.id));
+  }));
+
+  app.post('/api/orders', userGate, asyncHandler(async (req, res) => {
+    const { fio, phone, address } = req.body;
+    if (!fio || !phone || !address) {
+      return res.status(400).json({ error: 'missing_fields' });
+    }
+    const result = await ordersQ.createOrder(pool, { userId: req.telegramUser.id, fio, phone, address });
+    if (result.error) return res.status(400).json({ error: result.error });
+    if (bot) {
+      bot.notifyNewOrder(result.order).catch(() => {});
+    }
+    res.json(result.order);
+  }));
+
+  app.get('/api/my-orders', userGate, asyncHandler(async (req, res) => {
+    res.json(await ordersQ.listOrdersForUser(pool, req.telegramUser.id));
+  }));
+
+  app.post('/api/proof', userGate, upload.single('photo'), asyncHandler(async (req, res) => {
+    const orderId = Number(req.body.orderId);
+    if (!req.file) return res.status(400).json({ error: 'missing_photo' });
+    if (!bot) return res.status(503).json({ error: 'bot_unavailable' });
+    const fileId = await bot.sendProofPhoto(orderId, req.file.buffer);
+    const proof = await ordersQ.addPaymentProof(pool, orderId, fileId);
+    res.json(proof);
   }));
 
   app.use(express.static(path.join(__dirname, '..', 'webapp')));
