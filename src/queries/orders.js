@@ -95,10 +95,26 @@ async function setOrderStatus(pool, id, status) {
 }
 
 async function deleteOrder(pool, id) {
-  await pool.query('DELETE FROM order_items WHERE order_id = $1', [id]);
-  await pool.query('DELETE FROM payment_proofs WHERE order_id = $1', [id]);
-  const { rowCount } = await pool.query('DELETE FROM orders WHERE id = $1', [id]);
-  return rowCount > 0;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const itemsRes = await client.query('SELECT item_id FROM order_items WHERE order_id = $1', [id]);
+    await client.query('DELETE FROM order_items WHERE order_id = $1', [id]);
+    await client.query('DELETE FROM payment_proofs WHERE order_id = $1', [id]);
+    const { rowCount } = await client.query('DELETE FROM orders WHERE id = $1', [id]);
+    for (const row of itemsRes.rows) {
+      // Only items still held by this (pending) order go back on sale;
+      // genuinely sold items stay 'sold'.
+      await client.query(`UPDATE items SET status = 'available' WHERE id = $1 AND status = 'reserved'`, [row.item_id]);
+    }
+    await client.query('COMMIT');
+    return rowCount > 0;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function addPaymentProof(pool, orderId, telegramFileId) {

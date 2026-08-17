@@ -41,6 +41,38 @@ test('cancelOrder marks the order cancelled and releases its items', async () =>
   assert.equal((await itemsQ.getItem(pool, item.id)).status, 'available');
 });
 
+test('cancelOrder reports already_cancelled on a double cancel of an unpaid order', async () => {
+  const pool = await createTestPool();
+  const { order } = await setupOrder(pool);
+  await adminActions.cancelOrder(pool, order.id);
+
+  const second = await adminActions.cancelOrder(pool, order.id);
+  assert.equal(second.error, 'already_cancelled');
+});
+
+test('cancelOrder refuses a paid order and leaves its items sold', async () => {
+  const pool = await createTestPool();
+  const { order, item } = await setupOrder(pool);
+  await adminActions.confirmOrderPayment(pool, order.id);
+
+  const result = await adminActions.cancelOrder(pool, order.id);
+  assert.equal(result.error, 'wrong_status');
+  assert.equal((await ordersQ.getOrder(pool, order.id)).status, 'оплачен');
+  assert.equal((await itemsQ.getItem(pool, item.id)).status, 'sold');
+});
+
+test('cancelOrder refuses a completed order and leaves its items sold', async () => {
+  const pool = await createTestPool();
+  const { order, item } = await setupOrder(pool);
+  await adminActions.confirmOrderPayment(pool, order.id);
+  await adminActions.markOrderDone(pool, order.id);
+
+  const result = await adminActions.cancelOrder(pool, order.id);
+  assert.equal(result.error, 'wrong_status');
+  assert.equal((await ordersQ.getOrder(pool, order.id)).status, 'выполнен');
+  assert.equal((await itemsQ.getItem(pool, item.id)).status, 'sold');
+});
+
 test('markOrderDone requires the order to already be paid', async () => {
   const pool = await createTestPool();
   const { order } = await setupOrder(pool);

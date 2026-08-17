@@ -76,3 +76,46 @@ test('POST /api/proof relays the photo through the bot and stores the file id', 
   assert.equal(proofRes.body.telegram_file_id, 'fake_file_id');
   assert.equal(bot._proofsSent.length, 1);
 });
+
+test('POST /api/proof rejects an order that belongs to another user, a missing order, and a bad id', async () => {
+  const pool = await createTestPool();
+  const category = await categoriesQ.createCategory(pool, { name: 'Верх' });
+  const item = await itemsQ.createItem(pool, { categoryId: category.id, name: 'Куртка', price: 1500, size: 'M', conditionText: '', photos: [] });
+  const bot = fakeBot();
+  const app = createServer({ pool, config: testConfig(), bot });
+  const userA = buildInitData({ id: 1 }, BOT_TOKEN);
+  const userB = buildInitData({ id: 2 }, BOT_TOKEN);
+
+  await request(app).post('/api/cart/add').query({ init_data: userA }).send({ itemId: item.id });
+  const orderRes = await request(app).post('/api/orders').query({ init_data: userA }).send({ fio: 'A', phone: 'A', address: 'A' });
+  const orderId = orderRes.body.id;
+
+  const foreign = await request(app)
+    .post('/api/proof')
+    .query({ init_data: userB })
+    .field('orderId', String(orderId))
+    .attach('photo', Buffer.from('fake-image-bytes'), 'receipt.jpg');
+  assert.equal(foreign.status, 403);
+  assert.equal(foreign.body.error, 'forbidden');
+
+  const missing = await request(app)
+    .post('/api/proof')
+    .query({ init_data: userA })
+    .field('orderId', '999999')
+    .attach('photo', Buffer.from('fake-image-bytes'), 'receipt.jpg');
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body.error, 'not_found');
+
+  const bad = await request(app)
+    .post('/api/proof')
+    .query({ init_data: userA })
+    .field('orderId', 'not-a-number')
+    .attach('photo', Buffer.from('fake-image-bytes'), 'receipt.jpg');
+  assert.equal(bad.status, 400);
+  assert.equal(bad.body.error, 'invalid_order_id');
+
+  // Nothing was relayed to the bot and no proof rows were written.
+  assert.equal(bot._proofsSent.length, 0);
+  const proofs = await pool.query('SELECT * FROM payment_proofs');
+  assert.equal(proofs.rows.length, 0);
+});

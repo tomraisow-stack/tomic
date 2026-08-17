@@ -53,7 +53,10 @@ function createServer({ pool, config, bot }) {
   }));
 
   app.delete('/api/cart/:itemId', userGate, asyncHandler(async (req, res) => {
-    await itemsQ.releaseItem(pool, Number(req.params.itemId));
+    const itemId = Number(req.params.itemId);
+    if (!Number.isInteger(itemId)) return res.status(400).json({ error: 'invalid_item_id' });
+    const released = await itemsQ.releaseItemForUser(pool, itemId, req.telegramUser.id);
+    if (!released) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
   }));
 
@@ -80,7 +83,12 @@ function createServer({ pool, config, bot }) {
 
   app.post('/api/proof', userGate, upload.single('photo'), asyncHandler(async (req, res) => {
     const orderId = Number(req.body.orderId);
+    if (!Number.isInteger(orderId)) return res.status(400).json({ error: 'invalid_order_id' });
     if (!req.file) return res.status(400).json({ error: 'missing_photo' });
+    const order = await ordersQ.getOrder(pool, orderId);
+    if (!order) return res.status(404).json({ error: 'not_found' });
+    // order.user_id is a string on real Postgres (BIGINT) and a number on pg-mem.
+    if (String(order.user_id) !== String(req.telegramUser.id)) return res.status(403).json({ error: 'forbidden' });
     if (!bot) return res.status(503).json({ error: 'bot_unavailable' });
     const fileId = await bot.sendProofPhoto(orderId, req.file.buffer);
     const proof = await ordersQ.addPaymentProof(pool, orderId, fileId);

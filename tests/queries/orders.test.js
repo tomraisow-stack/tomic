@@ -71,3 +71,33 @@ test('setOrderStatus, addPaymentProof, deleteOrder', async () => {
   assert.equal(deleted, true);
   assert.equal(await ordersQ.getOrder(pool, order.id), null);
 });
+
+test('deleteOrder releases the items of a pending order back to available', async () => {
+  const pool = await createTestPool();
+  const items = await setupReservedItems(pool, 1, [100, 250]);
+  const { order } = await ordersQ.createOrder(pool, { userId: 1, fio: 'A', phone: 'A', address: 'A' });
+  assert.equal((await itemsQ.getItem(pool, items[0].id)).status, 'reserved');
+
+  assert.equal(await ordersQ.deleteOrder(pool, order.id), true);
+  for (const item of items) {
+    assert.equal((await itemsQ.getItem(pool, item.id)).status, 'available');
+  }
+  const remaining = await pool.query('SELECT * FROM order_items WHERE order_id = $1', [order.id]);
+  assert.equal(remaining.rows.length, 0);
+});
+
+test('deleteOrder leaves the items of a paid order sold', async () => {
+  const pool = await createTestPool();
+  const items = await setupReservedItems(pool, 1, [100]);
+  const { order } = await ordersQ.createOrder(pool, { userId: 1, fio: 'A', phone: 'A', address: 'A' });
+  await ordersQ.setOrderStatus(pool, order.id, 'оплачен');
+  await itemsQ.markItemSold(pool, items[0].id);
+
+  assert.equal(await ordersQ.deleteOrder(pool, order.id), true);
+  assert.equal((await itemsQ.getItem(pool, items[0].id)).status, 'sold');
+});
+
+test('deleteOrder returns false for a missing order id', async () => {
+  const pool = await createTestPool();
+  assert.equal(await ordersQ.deleteOrder(pool, 4242), false);
+});

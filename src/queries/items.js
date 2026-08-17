@@ -128,11 +128,37 @@ async function releaseItem(pool, itemId) {
   }
 }
 
+// Same as releaseItem, but only if the reservation belongs to `userId`.
+// Returns false (and changes nothing) when the caller does not hold the reservation.
+async function releaseItemForUser(pool, itemId, userId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ownershipCheck = await client.query(
+      'SELECT 1 FROM cart_reservations WHERE item_id = $1 AND user_id = $2',
+      [itemId, userId]
+    );
+    if (ownershipCheck.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+    await client.query(`UPDATE items SET status = 'available' WHERE id = $1 AND status = 'reserved'`, [itemId]);
+    await client.query('DELETE FROM cart_reservations WHERE item_id = $1', [itemId]);
+    await client.query('COMMIT');
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function markItemSold(pool, itemId) {
   await pool.query(`UPDATE items SET status = 'sold' WHERE id = $1`, [itemId]);
 }
 
 module.exports = {
   listItems, listItemsAdmin, getItem, createItem, updateItem, deleteItem,
-  reserveItem, releaseItem, markItemSold,
+  reserveItem, releaseItem, releaseItemForUser, markItemSold,
 };

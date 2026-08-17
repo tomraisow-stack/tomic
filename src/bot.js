@@ -5,12 +5,18 @@ function formatOrderNotification(order) {
   return `Новый заказ #${order.id}\nСумма: ${order.total} ₽\nСтатус: ${order.status}`;
 }
 
+// grammY passes a BotError: `.error` holds the thrown value, `.ctx` the update context.
+function handleBotError(err) {
+  console.error('bot error', err && err.error !== undefined ? err.error : err);
+}
+
 function createBot({ token, adminIds }) {
   const bot = new Bot(token);
+  bot.catch(handleBotError);
 
-  bot.command('start', (ctx) => {
-    ctx.reply('Открой каталог через кнопку меню, чтобы посмотреть товары.');
-  });
+  // The handler must return the promise so grammY (and bot.catch) sees a rejection
+  // instead of it becoming an unhandled rejection that kills the process.
+  bot.command('start', (ctx) => ctx.reply('Открой каталог через кнопку меню, чтобы посмотреть товары.'));
 
   async function notifyNewOrder(order) {
     const text = formatOrderNotification(order);
@@ -35,4 +41,4 @@ function createBot({ token, adminIds }) {
   return { bot, notifyNewOrder, sendProofPhoto };
 }
 
-module.exports = { formatOrderNotification, createBot };
+module.exports = { formatOrderNotification, createBot, handleBotError };
