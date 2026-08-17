@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>Atgshmot</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/style.css" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="back-btn" class="icon-btn" data-action="back" hidden aria-label="Назад">‹</button>
+      <span class="brand">Atgshmot</span>
+      <span class="topbar-spacer"></span>
+    </header>
+
+    <main id="screen"><div class="skeleton-block"></div></main>
+
+    <nav id="tabbar">
+      <button class="tab active" data-tab="catalog">
+        <i class="ico">🧥</i><span>Каталог</span>
+      </button>
+      <button class="tab" data-tab="cart">
+        <i class="ico">🛍<span class="cart-badge" id="cart-badge" hidden>0</span></i><span>Корзина</span>
+      </button>
+      <button class="tab" data-tab="admin" id="admin-tab" hidden>
+        <i class="ico">⚙️</i><span>Админ</span>
+      </button>
+    </nav>
+  </div>
+
+  <div id="sheet-overlay" class="overlay" hidden data-action="sheet-close"></div>
+  <div id="sheet" class="sheet" hidden></div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
