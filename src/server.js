@@ -4,6 +4,7 @@ const path = require('path');
 const { requireUser, requireAdmin } = require('./auth');
 const categoriesQ = require('./queries/categories');
 const itemsQ = require('./queries/items');
+const ordersQ = require('./queries/orders');
 
 function asyncHandler(fn) {
   return (req, res, next) => {
@@ -39,6 +40,22 @@ function createServer({ pool, config, bot }) {
     const item = await itemsQ.getItem(pool, Number(req.params.id));
     if (!item) return res.status(404).json({ error: 'not_found' });
     res.json(item);
+  }));
+
+  app.post('/api/cart/add', userGate, asyncHandler(async (req, res) => {
+    const itemId = Number(req.body.itemId);
+    const reservation = await itemsQ.reserveItem(pool, itemId, req.telegramUser.id, config.reservationTtlMs);
+    if (!reservation) return res.status(409).json({ error: 'already_reserved' });
+    res.json(reservation);
+  }));
+
+  app.delete('/api/cart/:itemId', userGate, asyncHandler(async (req, res) => {
+    await itemsQ.releaseItem(pool, Number(req.params.itemId));
+    res.json({ ok: true });
+  }));
+
+  app.get('/api/cart', userGate, asyncHandler(async (req, res) => {
+    res.json(await ordersQ.getUserCartReservations(pool, req.telegramUser.id));
   }));
 
   app.use(express.static(path.join(__dirname, '..', 'webapp')));

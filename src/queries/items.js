@@ -109,7 +109,23 @@ async function reserveItem(pool, itemId, userId, ttlMs) {
 }
 
 async function releaseItem(pool, itemId) {
-  await pool.query(`UPDATE items SET status = 'available' WHERE id = $1 AND status = 'reserved'`, [itemId]);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updateRes = await client.query(
+      `UPDATE items SET status = 'available' WHERE id = $1 AND status = 'reserved' RETURNING id`,
+      [itemId]
+    );
+    if (updateRes.rowCount > 0) {
+      await client.query('DELETE FROM cart_reservations WHERE item_id = $1', [itemId]);
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 async function markItemSold(pool, itemId) {
