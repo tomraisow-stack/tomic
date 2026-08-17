@@ -1,6 +1,8 @@
 // src/server.js
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 const { requireUser, requireAdmin } = require('./auth');
 const categoriesQ = require('./queries/categories');
@@ -18,6 +20,19 @@ function createServer({ pool, config, bot }) {
   const app = express();
   app.use(express.json());
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+
+  const photosDir = path.join(__dirname, '..', 'webapp', 'photos');
+  fs.mkdirSync(photosDir, { recursive: true });
+  const photoUpload = multer({
+    storage: multer.diskStorage({
+      destination: photosDir,
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname || '').slice(0, 10).replace(/[^a-zA-Z0-9.]/g, '');
+        cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
+      },
+    }),
+    limits: { fileSize: 8 * 1024 * 1024 },
+  });
 
   const userGate = requireUser({ botToken: config.botToken, maxAgeSeconds: config.userInitDataMaxAgeSeconds });
   const adminGate = requireAdmin({ botToken: config.botToken, adminIds: config.adminIds, maxAgeSeconds: config.adminInitDataMaxAgeSeconds });
@@ -125,6 +140,11 @@ function createServer({ pool, config, bot }) {
 
   app.delete('/api/admin/orders/:id', adminGate, asyncHandler(async (req, res) => {
     res.json({ ok: await ordersQ.deleteOrder(pool, Number(req.params.id)) });
+  }));
+
+  app.post('/api/admin/upload-photo', adminGate, photoUpload.single('photo'), asyncHandler(async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'missing_photo' });
+    res.json({ url: `/photos/${req.file.filename}` });
   }));
 
   app.get('/api/admin/items', adminGate, asyncHandler(async (req, res) => {

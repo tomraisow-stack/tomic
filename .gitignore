@@ -2,3 +2,5 @@ node_modules/
 .env
 *.log
 .worktrees/
+webapp/photos/*
+!webapp/photos/.gitkeep

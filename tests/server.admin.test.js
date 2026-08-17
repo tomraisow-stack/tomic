@@ -77,3 +77,36 @@ test('admin can confirm/cancel/mark-done an order via the API', async () => {
   const doneRes = await request(app).post(`/api/admin/orders/${orderId}/done`).query({ init_data: admin });
   assert.equal(doneRes.body.status, 'выполнен');
 });
+
+test('admin can upload an item photo and gets back a servable URL', async () => {
+  const pool = await createTestPool();
+  const app = createServer({ pool, config: testConfig(), bot: null });
+  const admin = buildInitData({ id: 1 }, BOT_TOKEN);
+
+  const res = await request(app)
+    .post('/api/admin/upload-photo')
+    .query({ init_data: admin })
+    .attach('photo', Buffer.from('fake-image-bytes'), 'jacket.jpg');
+
+  assert.equal(res.status, 200);
+  assert.match(res.body.url, /^\/photos\/\d+-[a-f0-9]+\.jpg$/);
+
+  const fs = require('fs');
+  const path = require('path');
+  const savedPath = path.join(__dirname, '..', 'webapp', res.body.url);
+  assert.equal(fs.existsSync(savedPath), true);
+  fs.unlinkSync(savedPath);
+});
+
+test('upload-photo rejects a non-admin', async () => {
+  const pool = await createTestPool();
+  const app = createServer({ pool, config: testConfig(), bot: null });
+  const nonAdmin = buildInitData({ id: 999 }, BOT_TOKEN);
+
+  const res = await request(app)
+    .post('/api/admin/upload-photo')
+    .query({ init_data: nonAdmin })
+    .attach('photo', Buffer.from('fake-image-bytes'), 'jacket.jpg');
+
+  assert.equal(res.status, 403);
+});
