@@ -18,7 +18,15 @@ function validateInitData(initDataRaw, botToken, maxAgeSeconds) {
 
   const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
   const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-  if (computedHash !== hash) return { valid: false, reason: 'bad_signature' };
+
+  const computedHashBuf = Buffer.from(computedHash, 'hex');
+  const hashBuf = Buffer.from(hash, 'hex');
+  if (
+    hashBuf.length !== computedHashBuf.length ||
+    !crypto.timingSafeEqual(computedHashBuf, hashBuf)
+  ) {
+    return { valid: false, reason: 'bad_signature' };
+  }
 
   const authDate = Number(params.get('auth_date'));
   if (!authDate) return { valid: false, reason: 'missing_auth_date' };
