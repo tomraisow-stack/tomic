@@ -40,3 +40,12 @@ test('GET /api/items/:id returns 404 for a missing item', async () => {
   const res = await request(app).get('/api/items/9999');
   assert.equal(res.status, 404);
 });
+
+test('GET /api/items/:id with non-numeric ID returns 500 (error handler catches the error)', async () => {
+  const pool = await createTestPool();
+  const app = createServer({ pool, config: testConfig(), bot: null });
+  const res = await request(app).get('/api/items/abc');
+  assert.notEqual(res.status, 200);
+  assert.notEqual(res.status, 204);
+  assert.equal(res.body.error, 'internal_error');
+});
