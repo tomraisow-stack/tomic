@@ -79,4 +79,44 @@ async function deleteItem(pool, id) {
   return rowCount > 0;
 }
 
-module.exports = { listItems, listItemsAdmin, getItem, createItem, updateItem, deleteItem };
+async function reserveItem(pool, itemId, userId, ttlMs) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const updateRes = await client.query(
+      `UPDATE items SET status = 'reserved' WHERE id = $1 AND status = 'available' RETURNING id`,
+      [itemId]
+    );
+    if (updateRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const expiresAt = new Date(Date.now() + ttlMs);
+    const reservationRes = await client.query(
+      `INSERT INTO cart_reservations (item_id, user_id, expires_at)
+       VALUES ($1, $2, $3)
+       RETURNING id, item_id, user_id, expires_at`,
+      [itemId, userId, expiresAt]
+    );
+    await client.query('COMMIT');
+    return reservationRes.rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function releaseItem(pool, itemId) {
+  await pool.query(`UPDATE items SET status = 'available' WHERE id = $1 AND status = 'reserved'`, [itemId]);
+}
+
+async function markItemSold(pool, itemId) {
+  await pool.query(`UPDATE items SET status = 'sold' WHERE id = $1`, [itemId]);
+}
+
+module.exports = {
+  listItems, listItemsAdmin, getItem, createItem, updateItem, deleteItem,
+  reserveItem, releaseItem, markItemSold,
+};

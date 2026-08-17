@@ -80,3 +80,52 @@ test('updateItem replaces fields; deleteItem removes the row', async () => {
   assert.equal(deleted, true);
   assert.equal(await itemsQ.getItem(pool, item.id), null);
 });
+
+test('reserveItem: only one concurrent reservation succeeds for the same item', async () => {
+  const pool = await createTestPool();
+  const category = await setupCategory(pool);
+  const item = await itemsQ.createItem(pool, { categoryId: category.id, name: 'Куртка', price: 1500, size: 'M', conditionText: 'хор.', photos: [] });
+
+  const [first, second] = await Promise.all([
+    itemsQ.reserveItem(pool, item.id, 111, 30 * 60 * 1000),
+    itemsQ.reserveItem(pool, item.id, 222, 30 * 60 * 1000),
+  ]);
+
+  const succeeded = [first, second].filter(Boolean);
+  assert.equal(succeeded.length, 1);
+
+  const reloaded = await itemsQ.getItem(pool, item.id);
+  assert.equal(reloaded.status, 'reserved');
+});
+
+test('reserveItem returns null for an already-sold item', async () => {
+  const pool = await createTestPool();
+  const category = await setupCategory(pool);
+  const item = await itemsQ.createItem(pool, { categoryId: category.id, name: 'A', price: 100, size: 'S', conditionText: '', photos: [] });
+  await pool.query("UPDATE items SET status = 'sold' WHERE id = $1", [item.id]);
+
+  const result = await itemsQ.reserveItem(pool, item.id, 111, 1000);
+  assert.equal(result, null);
+});
+
+test('releaseItem flips a reserved item back to available; no-op on a sold item', async () => {
+  const pool = await createTestPool();
+  const category = await setupCategory(pool);
+  const item = await itemsQ.createItem(pool, { categoryId: category.id, name: 'A', price: 100, size: 'S', conditionText: '', photos: [] });
+  await itemsQ.reserveItem(pool, item.id, 111, 1000);
+
+  await itemsQ.releaseItem(pool, item.id);
+  assert.equal((await itemsQ.getItem(pool, item.id)).status, 'available');
+
+  await pool.query("UPDATE items SET status = 'sold' WHERE id = $1", [item.id]);
+  await itemsQ.releaseItem(pool, item.id);
+  assert.equal((await itemsQ.getItem(pool, item.id)).status, 'sold');
+});
+
+test('markItemSold sets status to sold', async () => {
+  const pool = await createTestPool();
+  const category = await setupCategory(pool);
+  const item = await itemsQ.createItem(pool, { categoryId: category.id, name: 'A', price: 100, size: 'S', conditionText: '', photos: [] });
+  await itemsQ.markItemSold(pool, item.id);
+  assert.equal((await itemsQ.getItem(pool, item.id)).status, 'sold');
+});
