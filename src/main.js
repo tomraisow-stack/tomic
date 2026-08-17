@@ -25,7 +25,9 @@ async function main() {
     console.log(`Atgshmot Shop server listening on port ${config.port}`);
   });
 
-  await botWrapper.bot.start();
+  botWrapper.bot.start().catch((err) => {
+    console.error('bot polling failed', err);
+  });
 
   setInterval(() => {
     sweepExpiredReservations(pool).catch((err) => {
