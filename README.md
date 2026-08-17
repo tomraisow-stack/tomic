@@ -9,7 +9,7 @@ npm install
 npm run demo
 ```
 
-Then open **http://localhost:8091** in a normal browser. This runs the full
+Then open **http://localhost:8081** in a normal browser. This runs the full
 Express app + `webapp/` frontend against an in-memory PostgreSQL (`pg-mem`)
 seeded with sample categories/items, with a stub bot instead of a real
 Telegram bot token. The demo user is auto-authenticated as an admin, so both
